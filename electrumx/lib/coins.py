@@ -98,6 +98,7 @@ class Coin(object):
         Raise an exception if unrecognised.'''
         req_attrs = ['TX_COUNT', 'TX_COUNT_HEIGHT', 'TX_PER_BLOCK']
         for coin in util.subclasses(Coin):
+            print(coin.NAME)
             if (coin.NAME.lower() == name.lower() and
                     coin.NET.lower() == net.lower()):
                 coin_req_attrs = req_attrs.copy()
@@ -243,13 +244,17 @@ class Coin(object):
 
     @classmethod
     def block_header(cls, block, height):
+        
         '''Returns the block header given a block and its height.'''
         return block[:cls.static_header_len(height)]
 
     @classmethod
     def block(cls, raw_block, height):
         '''Return a Block namedtuple given a raw block and its height.'''
-        header = cls.block_header(raw_block, height)
+        print("height:",height)
+        if height==13600:
+            aa=99
+        header = cls.block_header(raw_block, height)        
         txs = cls.DESERIALIZER(raw_block, start=len(header)).read_tx_block()
         return Block(raw_block, header, txs)
 
@@ -2976,3 +2981,41 @@ class ECCoin(Coin):
         # you have to install scryp python module (pip install scrypt)
         import scrypt
         return scrypt.hash(header, header, 1024, 1, 1, 32)
+
+class Vpub(Coin):
+    '''Base class of coin hierarchy.'''
+
+    NAME = "Vpub"
+    SHORTNAME = "VP"
+    NET = "mainnet"
+    DESERIALIZER = lib_tx.DeserializerVpub
+    XPUB_VERBYTES = bytes.fromhex("0488b21e")
+    XPRV_VERBYTES = bytes.fromhex("0488ade4")
+    P2PKH_VERBYTE = bytes.fromhex("38")
+    P2SH_VERBYTES = [bytes.fromhex("3c")]
+    GENESIS_HASH = ('000018f21bd78dfd8ed7b09aa9ed726681d8d204801ed67b4fa633a86d642fde')
+    TX_COUNT = 2550
+    TX_COUNT_HEIGHT = 5100
+    TX_PER_BLOCK = 10
+    RPC_PORT = 51755
+    BASIC_HEADER_SIZE = 112
+    
+    BLOCK_PROCESSOR = block_proc.VpubBlockProcessor
+    
+    HEADER_VALUES = ('version', 'prev_block_hash', 'merkle_root', 'witness_root', 'timestamp',
+                     'bits', 'nonce')
+    HEADER_UNPACK = struct.Struct('< I 32s 32s 32s I I I').unpack_from    
+
+    @classmethod
+    def genesis_block(cls, block):
+        '''Check the Genesis block is the right one for this coin.
+
+        Return the block less its unspendable coinbase.
+        '''
+        header = cls.block_header(block, 0)
+        header_hex_hash = hash_to_hex_str(cls.header_hash(header))
+        if header_hex_hash != cls.GENESIS_HASH:
+            raise CoinError('genesis block has hash {} expected {}'
+                            .format(header_hex_hash, cls.GENESIS_HASH))
+
+        return block

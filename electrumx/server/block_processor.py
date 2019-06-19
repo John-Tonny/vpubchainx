@@ -103,7 +103,7 @@ class Prefetcher(object):
             while self.cache_size < self.min_cache_size:
                 # Try and catch up all blocks but limit to room in cache.
                 # Constrain fetch count to between 0 and 100 regardless;
-                # some chains can be lumpy.
+                # some chains can be lumpy.                                
                 cache_room = max(self.min_cache_size // self.ave_size, 1)
                 count = min(daemon_height - self.fetched_height, cache_room)
                 count = min(100, max(count, 0))
@@ -137,6 +137,7 @@ class Prefetcher(object):
                 self.cache_size += size
                 self.fetched_height += count
                 self.blocks_event.set()
+                
 
         self.refill_event.clear()
         return True
@@ -427,7 +428,9 @@ class BlockProcessor(object):
                 append_hashX(cache_value[:-12])
 
             # Add the new UTXOs
-            for idx, txout in enumerate(tx.outputs):
+            for idx, txout, tx_hash in enumerate(tx.outputs):
+                if txout.version!=1:
+                    continue
                 # Get the hashX.  Ignore unspendable outputs
                 hashX = script_hashX(txout.pk_script)
                 if hashX:
@@ -574,6 +577,8 @@ class BlockProcessor(object):
         '''
         # Fast track is it being in the cache
         idx_packed = pack('<H', tx_idx)
+        
+        aaa=hash_to_hex_str(tx_hash)
         cache_value = self.utxo_cache.pop(tx_hash + idx_packed, None)
         if cache_value:
             return cache_value
@@ -814,3 +819,110 @@ class LTORBlockProcessor(BlockProcessor):
                     add_touched(cache_value[:-12])
 
         self.tx_count -= len(txs)
+
+class VpubBlockProcessor(BlockProcessor):
+    def advance_txs(self, txs):
+        self.tx_hashes.append(b''.join(tx_hash for tx, tx_hash in txs))
+
+        # Use local vars for speed in the loops
+        undo_info = []
+        tx_num = self.tx_count
+        script_hashX = self.coin.hashX_from_script
+        s_pack = pack
+        put_utxo = self.utxo_cache.__setitem__
+        spend_utxo = self.spend_utxo
+        undo_info_append = undo_info.append
+        update_touched = self.touched.update
+        hashXs_by_tx = []
+        append_hashXs = hashXs_by_tx.append
+
+        for tx, tx_hash in txs:
+            hashXs = []
+            append_hashX = hashXs.append
+            tx_numb = s_pack('<I', tx_num)
+
+            # Spend the inputs
+            for txin in tx.inputs:
+                if txin.is_generation():
+                    continue
+                cache_value = spend_utxo(txin.prev_hash, txin.prev_idx)        
+                # print(hash_to_hex_str(txin.prev_hash))                
+                undo_info_append(cache_value)
+                append_hashX(cache_value[:-12])
+
+            # Add the new UTXOs
+            for idx, txout in enumerate(tx.outputs):
+                #if txout.version!=1 and  txout.version!=2 and txout.version!=3 :
+                if txout.version!=1 and txout.version!=2:
+                    continue
+                # Get the hashX.  Ignore unspendable outputs
+                hashX = script_hashX(txout.pk_script)
+                if hashX:
+                    append_hashX(hashX)
+                    put_utxo(tx_hash + s_pack('<H', idx),hashX + tx_numb + s_pack('<Q', txout.value))
+                        
+            append_hashXs(hashXs)
+            update_touched(hashXs)
+            tx_num += 1
+            
+        #for k in self.utxo_cache.keys():
+        #    print(k)
+        #    print(self.utxo_cache[k])            
+
+        self.db.history.add_unflushed(hashXs_by_tx, self.tx_count)
+
+        self.tx_count = tx_num
+        self.db.tx_counts.append(tx_num)
+
+        return undo_info    
+
+    def advance_txs(self, txs):
+        self.tx_hashes.append(b''.join(tx_hash for tx, tx_hash in txs))
+
+        # Use local vars for speed in the loops
+        undo_info = []
+        tx_num = self.tx_count
+        script_hashX = self.coin.hashX_from_script
+        s_pack = pack
+        put_utxo = self.utxo_cache.__setitem__
+        spend_utxo = self.spend_utxo
+        undo_info_append = undo_info.append
+        update_touched = self.touched.update
+        hashXs_by_tx = []
+        append_hashXs = hashXs_by_tx.append
+
+        for tx, tx_hash in txs:
+            hashXs = []
+            append_hashX = hashXs.append
+            tx_numb = s_pack('<I', tx_num)
+        
+            aaa = hash_to_hex_str(tx_hash)
+            # Spend the inputs
+            for txin in tx.inputs:
+                if txin.is_generation():
+                    continue
+                cache_value = spend_utxo(txin.prev_hash, txin.prev_idx)
+                undo_info_append(cache_value)
+                append_hashX(cache_value[:-12])
+
+            # Add the new UTXOs
+            for idx, txout in enumerate(tx.outputs):
+                if txout.version!=1:
+                    continue
+                # Get the hashX.  Ignore unspendable outputs
+                hashX = script_hashX(txout.pk_script)
+                if hashX:
+                    append_hashX(hashX)
+                    put_utxo(tx_hash + s_pack('<H', idx),
+                             hashX + tx_numb + s_pack('<Q', txout.value))
+
+            append_hashXs(hashXs)
+            update_touched(hashXs)
+            tx_num += 1
+
+        self.db.history.add_unflushed(hashXs_by_tx, self.tx_count)
+
+        self.tx_count = tx_num
+        self.db.tx_counts.append(tx_num)
+
+        return undo_info

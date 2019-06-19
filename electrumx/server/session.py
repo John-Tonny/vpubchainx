@@ -605,7 +605,7 @@ class SessionManager:
             async with TaskGroup() as group:
                 for session in list(self.sessions):
                     await group.spawn(session.close(force_after=1))
-
+    
     def extra_cost(self, session):
         # Note there is no guarantee that session is still in self.sessions.  Example traceback:
         # notify_sessions->notify->address_status->bump_cost->recalc_concurrency->extra_cost

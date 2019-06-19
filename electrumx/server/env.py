@@ -7,7 +7,6 @@
 
 '''Class for handling environment configuration and defaults.'''
 
-
 import re
 from ipaddress import IPv4Address, IPv6Address
 
@@ -37,7 +36,6 @@ class Env(EnvBase):
                        "HOST", "TCP_PORT", "SSL_PORT", "RPC_HOST", "RPC_PORT", "REPORT_HOST",
                        "REPORT_TCP_PORT", "REPORT_SSL_PORT", "REPORT_HOST_TOR",
                        "REPORT_TCP_PORT_TOR", "REPORT_SSL_PORT_TOR"])
-
         # Core items
 
         self.db_dir = self.required('DB_DIRECTORY')
@@ -70,7 +68,7 @@ class Env(EnvBase):
         self.donation_address = self.default('DONATION_ADDRESS', '')
         self.drop_client = self.custom("DROP_CLIENT", None, re.compile)
         self.blacklist_url = self.default('BLACKLIST_URL', self.coin.BLACKLIST_URL)
-        self.cache_MB = self.integer('CACHE_MB', 1200)
+        self.cache_MB = self.integer('CACHE_MB', 2500)
         self.reorg_limit = self.integer('REORG_LIMIT', self.coin.REORG_LIMIT)
 
         # Server limits to help prevent DoS
@@ -86,11 +84,11 @@ class Env(EnvBase):
         self.session_timeout = self.integer('SESSION_TIMEOUT', 600)
 
         # Services last - uses some env vars above
-
-        self.services = self.services_to_run()
+        
+        self.services = self.services_to_run()        
         if {service.protocol for service in self.services}.intersection(self.SSL_PROTOCOLS):
-            self.ssl_certfile = self.required('SSL_CERTFILE')
-            self.ssl_keyfile = self.required('SSL_KEYFILE')
+            self.ssl_certfile = '/etc/electrumx/server.crt'#self.required('SSL_CERTFILE')
+            self.ssl_keyfile = '/etc/electrumx/server.key'#self.required('SSL_KEYFILE')
         self.report_services = self.services_to_report()
 
     def sane_max_sessions(self):
@@ -142,7 +140,7 @@ class Env(EnvBase):
         default_services = {protocol: {ServicePart.HOST: 'all_interfaces'}
                             for protocol in self.KNOWN_PROTOCOLS}
         default_services['rpc'] = {ServicePart.HOST: 'localhost', ServicePart.PORT: 8000}
-        services = self._parse_services(self.default('SERVICES', ''), default_part)
+        services = self._parse_services(self.default('SERVICES', 'tcp://:50001,ssl://:50002,wss://:50004,rpc://:8000'), default_part)
 
         # Find onion hosts
         for service in services:

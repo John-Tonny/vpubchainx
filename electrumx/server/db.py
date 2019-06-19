@@ -182,6 +182,7 @@ class DB(object):
     # Flushing
     def assert_flushed(self, flush_data):
         '''Asserts state is fully flushed.'''
+        
         assert flush_data.tx_count == self.fs_tx_count == self.db_tx_count
         assert flush_data.height == self.fs_height == self.db_height
         assert flush_data.tip == self.db_tip
@@ -191,6 +192,7 @@ class DB(object):
         assert not flush_data.deletes
         assert not flush_data.undo_infos
         self.history.assert_flushed()
+        
 
     def flush_dbs(self, flush_data, flush_utxos, estimate_txs_remaining):
         '''Flush out cached state.  History is always flushed; UTXOs are

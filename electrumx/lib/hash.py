@@ -77,7 +77,8 @@ def hash_to_hex_str(x):
 
 def hex_str_to_hash(x):
     '''Convert a displayed hex string to a binary hash.'''
-    return bytes(reversed(hex_to_bytes(x)))
+    return bytes(hex_to_bytes(x))
+    #return bytes(reversed(hex_to_bytes(x)))
 
 
 class Base58Error(Exception):

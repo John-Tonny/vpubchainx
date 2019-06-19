@@ -30,7 +30,7 @@
 from collections import namedtuple
 from hashlib import blake2s
 
-from electrumx.lib.hash import sha256, double_sha256, hash_to_hex_str
+from electrumx.lib.hash import sha256, double_sha256, hash_to_hex_str, hash160
 from electrumx.lib.script import OpCodes
 from electrumx.lib.util import (
     unpack_le_int32_from, unpack_le_int64_from, unpack_le_uint16_from,
@@ -104,6 +104,18 @@ class Deserializer(object):
         self.binary = binary
         self.binary_length = len(binary)
         self.cursor = start
+
+        '''
+        f=open('/root/electrumx/bbb.txt', mode='r')
+        x=f.read()
+        print(len(x))
+        y= bytearray.fromhex(x)
+        print(y)
+        ee=self.TX_HASH_FN(y)
+        ff=hash_to_hex_str(ee)
+        print(ff)
+        '''
+        
 
     def read_tx(self):
         '''Return a deserialized transaction.'''
@@ -595,7 +607,15 @@ class TxDcr(namedtuple("Tx", "version inputs outputs locktime expiry "
                              "witness")):
     '''Class representing a Decred  transaction.'''
 
-
+class TxOutputVpubSt(namedtuple("TxOutput", "version value pk_script pos")):
+    '''Class representing a vpub transaction.'''
+class TxOutputVpubCt(namedtuple("TxOutput", "version commitment pubkey pk_script vRangeproof value pos")):    
+    '''Class representing a vpub transaction.'''
+class TxOutputVpubRt(namedtuple("TxOutput", "version data pos")):    
+    '''Class representing a vpub transaction.'''
+class TxOutputVpubDt(namedtuple("TxOutput", "version data pos")):    
+    '''Class representing a vpub transaction.'''
+    
 class DeserializerDecred(Deserializer):
     @staticmethod
     def blake256(data):
@@ -836,3 +856,160 @@ class DeserializerECCoin(Deserializer):
             self.cursor += 32
 
         return tx
+
+class DeserializerVpub(Deserializer):
+    @staticmethod
+    def read_tx(self):
+        return self._read_tx_parts(produce_hash=False)[0]
+
+    def read_tx_and_hash(self):
+        tx, tx_hash, _vsize = self._read_tx_parts()
+        return tx, tx_hash
+
+    def read_tx_and_vsize(self):
+        tx, _tx_hash, vsize = self._read_tx_parts()
+        return tx, vsize
+
+    def read_tx_block(self):
+        '''Returns a list of (deserialized_tx, tx_hash) pairs.'''
+        read = self.read_tx_and_hash
+        txs = [read() for _ in range(self._read_varint())]
+        stxs = [] # [read() for _ in range(self._read_varint())]
+        return txs + stxs
+
+    def read_tx_tree(self):
+        '''Returns a list of deserialized_tx without tx hashes.'''
+        read_tx = self.read_tx
+        return [read_tx() for _ in range(self._read_varint())]
+
+    def _read_input(self):
+        return TxInputDcr(
+            self._read_nbytes(32),   # prev_hash
+            self._read_le_uint32(),  # prev_idx
+            self._read_varbytes(),   # script
+            self._read_le_uint32(),  # sequence
+        )
+    
+    def _read_outputs(self):
+        ret = []
+        read_output = self._read_output        
+        start=self.cursor
+        outputlens=self._read_varint()
+        orig_ser=self.binary[start:self.cursor]
+        for i in range(outputlens):
+            outdata=self._read_output()
+            if outdata.version==1:
+                ret.append(outdata)
+            else:
+                ret.append(outdata)
+        return ret,orig_ser    
+    
+    def _read_output(self):
+        pos = []
+        pos.append(self.cursor)
+        version = self._read_byte() # version
+        if version == 0x01:
+            value=self._read_le_int64()
+            pk_script=self._read_varbytes()
+            pos.append(self.cursor)
+            return TxOutputVpubSt(
+                version,                # version
+                value,                  # value
+                pk_script,              # pk_script
+                pos,
+            )
+        elif version == 0x02:            
+            commitment=self._read_nbytes(33)
+            pubkey=self._read_varbytes()
+            pk_script=self._read_varbytes()
+            pos.append(self.cursor)
+            vRangeproof=self._read_varbytes()
+            return TxOutputVpubCt(                
+                version,
+                commitment,
+                pubkey,
+                pk_script,
+                vRangeproof,
+                0x00,
+                pos,
+            )        
+        elif version == 0x03:
+            data = self._read_varbytes()
+            pos.append(self.cursor)
+            return TxOutputVpubRt(
+                version,
+                data,
+                pos,
+            )
+        elif version == 0x04:            
+            data = self._read_varbytes()
+            pos.append(self.cursor)
+            return TxOutputVpubDt(
+                version,
+                data,
+                pos,
+            )
+        else:
+            return None
+            
+    def _read_witnessall(self, fields):
+        read_witness = self._read_witness        
+        return [read_witness() for _ in range(fields)]
+
+    def _read_witness(self):
+        fields = self._read_varint()
+        read_witness_field = self._read_witness_field
+        return [read_witness_field() for _ in range(fields)]
+
+    def _read_witness_field(self):
+        return self._read_varbytes()
+
+    def _read_tx_parts(self):
+        '''Return a (deserialized TX, tx_hash, vsize) tuple.'''
+        start = self.cursor
+        marker = self.binary[self.cursor + 4]
+        if marker:
+            tx = super().read_tx()
+            tx_hash = self.TX_HASH_FN(self.binary[start:self.cursor])
+            return tx, tx_hash, self.binary_length
+
+        # Ugh, this is nasty.
+        version = self._read_le_int32()
+        marker = self._read_byte()
+        flag = self._read_byte()        
+
+        inputs = self._read_inputs()
+        orig_ser = self.binary[start:self.cursor]
+        start = self.cursor
+        outputs,outputlens = self._read_outputs()        
+        orig_ser = orig_ser+ outputlens
+        for i in range(len(outputs)):
+            aa=self.binary[outputs[i].pos[0]:outputs[i].pos[1]]
+            orig_ser  =  orig_ser + aa            
+            if outputs[i].version==0x02:
+                orig_ser = orig_ser + bytes(1)
+                        
+        base_size = self.cursor - start
+        # witness = self._read_witness(len(inputs))
+        
+        start = self.cursor    
+        witness=[]
+        if len(self.binary)>self.cursor+2:  
+            witness = self._read_witnessall(len(inputs))
+            
+        
+        start = self.cursor    
+        locktime = 0
+        #locktime = self._read_le_uint32()
+        #orig_ser += self.binary[start:self.cursor]
+        vsize = (3 * base_size + self.binary_length) // 4
+        # vsize = 0
+        
+        #aaa=self.TX_HASH_FN(orig_ser)
+        #bbb=hash_to_hex_str(aaa)
+        #print(bbb)
+
+        return TxSegWit(version, marker, flag, inputs, outputs, witness,
+                        locktime), self.TX_HASH_FN(orig_ser), vsize
+
+    #+		vchBlockSig	[70 items]	std::vector<unsigned char>
