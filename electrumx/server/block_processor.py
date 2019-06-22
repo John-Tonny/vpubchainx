@@ -386,9 +386,11 @@ class BlockProcessor(object):
         '''
         min_height = self.db.min_undo_height(self.daemon.cached_height())
         height = self.height
-
+        
         for block in blocks:
             height += 1
+            if height==21032:
+                aa=99
             undo_info = self.advance_txs(block.transactions)
             if height >= min_height:
                 self.undo_infos.append((undo_info, height))
@@ -876,53 +878,3 @@ class VpubBlockProcessor(BlockProcessor):
 
         return undo_info    
 
-    def advance_txs(self, txs):
-        self.tx_hashes.append(b''.join(tx_hash for tx, tx_hash in txs))
-
-        # Use local vars for speed in the loops
-        undo_info = []
-        tx_num = self.tx_count
-        script_hashX = self.coin.hashX_from_script
-        s_pack = pack
-        put_utxo = self.utxo_cache.__setitem__
-        spend_utxo = self.spend_utxo
-        undo_info_append = undo_info.append
-        update_touched = self.touched.update
-        hashXs_by_tx = []
-        append_hashXs = hashXs_by_tx.append
-
-        for tx, tx_hash in txs:
-            hashXs = []
-            append_hashX = hashXs.append
-            tx_numb = s_pack('<I', tx_num)
-        
-            aaa = hash_to_hex_str(tx_hash)
-            # Spend the inputs
-            for txin in tx.inputs:
-                if txin.is_generation():
-                    continue
-                cache_value = spend_utxo(txin.prev_hash, txin.prev_idx)
-                undo_info_append(cache_value)
-                append_hashX(cache_value[:-12])
-
-            # Add the new UTXOs
-            for idx, txout in enumerate(tx.outputs):
-                if txout.version!=1:
-                    continue
-                # Get the hashX.  Ignore unspendable outputs
-                hashX = script_hashX(txout.pk_script)
-                if hashX:
-                    append_hashX(hashX)
-                    put_utxo(tx_hash + s_pack('<H', idx),
-                             hashX + tx_numb + s_pack('<Q', txout.value))
-
-            append_hashXs(hashXs)
-            update_touched(hashXs)
-            tx_num += 1
-
-        self.db.history.add_unflushed(hashXs_by_tx, self.tx_count)
-
-        self.tx_count = tx_num
-        self.db.tx_counts.append(tx_num)
-
-        return undo_info

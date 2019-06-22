@@ -68,7 +68,7 @@ class Env(EnvBase):
         self.donation_address = self.default('DONATION_ADDRESS', '')
         self.drop_client = self.custom("DROP_CLIENT", None, re.compile)
         self.blacklist_url = self.default('BLACKLIST_URL', self.coin.BLACKLIST_URL)
-        self.cache_MB = self.integer('CACHE_MB', 2500)
+        self.cache_MB = self.integer('CACHE_MB', 1200)
         self.reorg_limit = self.integer('REORG_LIMIT', self.coin.REORG_LIMIT)
 
         # Server limits to help prevent DoS
@@ -140,7 +140,7 @@ class Env(EnvBase):
         default_services = {protocol: {ServicePart.HOST: 'all_interfaces'}
                             for protocol in self.KNOWN_PROTOCOLS}
         default_services['rpc'] = {ServicePart.HOST: 'localhost', ServicePart.PORT: 8000}
-        services = self._parse_services(self.default('SERVICES', 'tcp://:50001,ssl://:50002,wss://:50004,rpc://:8000'), default_part)
+        services = self._parse_services(self.default('SERVICES', 'tcp://:50001,ssl://:50002,ws://:50003,wss://:50004,rpc://:8000'), default_part)
 
         # Find onion hosts
         for service in services:

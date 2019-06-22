@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright (c) 2017, the ElectrumX authors
 #
 # All rights reserved.
