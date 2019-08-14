@@ -967,16 +967,10 @@ class DeserializerVpub(Deserializer):
     def _read_tx_parts(self):
         '''Return a (deserialized TX, tx_hash, vsize) tuple.'''
         start = self.cursor
-        marker = self.binary[self.cursor + 4]
-        if marker:
-            tx = super().read_tx()
-            tx_hash = self.TX_HASH_FN(self.binary[start:self.cursor])
-            return tx, tx_hash, self.binary_length
-
-        # Ugh, this is nasty.
-        version = self._read_le_int32()
-        marker = self._read_byte()
-        flag = self._read_byte()        
+        version = self._read_le_uint16()
+        marker  = version >> 8
+        flag    = 0
+        locktime = self._read_le_uint32()
 
         inputs = self._read_inputs()
         orig_ser = self.binary[start:self.cursor]
@@ -999,8 +993,6 @@ class DeserializerVpub(Deserializer):
             
         
         start = self.cursor    
-        locktime = 0
-        #locktime = self._read_le_uint32()
         #orig_ser += self.binary[start:self.cursor]
         vsize = (3 * base_size + self.binary_length) // 4
         # vsize = 0
